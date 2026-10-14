@@ -14,6 +14,27 @@ $resultados = $res['ok'] ? ($res['data'] ?? []) : [];
 if (!$res['ok']) { $error = $res['mensaje'] ?? 'Error al consultar el archivo.'; }
 
 $hayBusqueda = $termino !== '' || $desde !== '' || $hasta !== '';
+
+// Etiqueta visible del tipo (misma que dashboard)
+if (!function_exists('tipo_badge')) {
+  function tipo_badge(?string $nombre, ?string $color): string {
+    if ($nombre === null || $nombre === '') return '';
+    $corto = mb_strtolower(trim(explode('/', $nombre)[0]));
+    $mapa = [
+      'guía pendiente de entrega' => 'Guía pendiente',
+      'guía sin planillar'        => 'Sin planillar',
+      'queja / reclamación'       => 'Queja',
+      'consulta de cliente'       => 'Consulta',
+      'seguimiento de novedad'    => 'Novedad',
+      'faltante'                  => 'Faltante',
+      'recuperación de cartaporte'=> 'Cartaporte',
+    ];
+    $txt = $mapa[$corto] ?? mb_substr($nombre, 0, 22);
+    $color = $color ?: '#7C3AED';
+    return '<span class="tag-tipo" style="color:' . e($color) . ';background:color-mix(in srgb,' . e($color) . ' 12%,#fff);border:1px solid color-mix(in srgb,' . e($color) . ' 25%,#fff)">'
+         . '<span class="dot" style="background:' . e($color) . '"></span>' . e($txt) . '</span>';
+  }
+}
 ?>
 
 <div class="top-bar">
@@ -54,7 +75,7 @@ $hayBusqueda = $termino !== '' || $desde !== '' || $hasta !== '';
   <?php foreach ($resultados as $t): ?>
     <div class="task-row archived">
       <div class="cb done" title="Resuelta"></div>
-      <div class="type-dot" style="background:<?= e($t['tipo_color'] ?? '#999') ?>" title="<?= e($t['tipo_nombre'] ?? '') ?>"></div>
+      <?= tipo_badge($t['tipo_nombre'] ?? null, $t['tipo_color'] ?? null) ?>
       <?php if (!empty($t['numero_guia'])): ?><div class="task-guide"><?= e($t['numero_guia']) ?></div><?php endif; ?>
       <div class="task-desc"><?= e($t['descripcion']) ?>
         <?php if (!empty($t['notas'])): ?><i class="ti ti-note note-ico" title="<?= e($t['notas']) ?>"></i><?php endif; ?>

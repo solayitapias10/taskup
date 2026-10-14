@@ -4,6 +4,27 @@ $todas      = db_call('fun_listar_templates_todas')['data'] ?? [];
 $templates  = array_values(array_filter($todas, fn($t) => $t['visible']));
 $eliminadas = array_values(array_filter($todas, fn($t) => !$t['visible']));
 $tipos     = array_values(array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => $t['activo'] && $t['visible']));
+
+// Etiqueta visible del tipo (misma que dashboard)
+if (!function_exists('tipo_badge')) {
+  function tipo_badge(?string $nombre, ?string $color): string {
+    if ($nombre === null || $nombre === '') return '';
+    $corto = mb_strtolower(trim(explode('/', $nombre)[0]));
+    $mapa = [
+      'guía pendiente de entrega' => 'Guía pendiente',
+      'guía sin planillar'        => 'Sin planillar',
+      'queja / reclamación'       => 'Queja',
+      'consulta de cliente'       => 'Consulta',
+      'seguimiento de novedad'    => 'Novedad',
+      'faltante'                  => 'Faltante',
+      'recuperación de cartaporte'=> 'Cartaporte',
+    ];
+    $txt = $mapa[$corto] ?? mb_substr($nombre, 0, 22);
+    $color = $color ?: '#7C3AED';
+    return '<span class="tag-tipo" style="color:' . e($color) . ';background:color-mix(in srgb,' . e($color) . ' 12%,#fff);border:1px solid color-mix(in srgb,' . e($color) . ' 25%,#fff)">'
+         . '<span class="dot" style="background:' . e($color) . '"></span>' . e($txt) . '</span>';
+  }
+}
 ?>
 
 <div class="top-bar">
@@ -20,11 +41,10 @@ $tipos     = array_values(array_filter(db_call('fun_listar_task_types')['data'] 
          data-nombre="<?= e($tpl['nombre']) ?>" data-descripcion="<?= e($tpl['descripcion'] ?? '') ?>"
          data-tipo="<?= (int)($tpl['tipo_id'] ?? 0) ?>" data-orden="<?= (int)$tpl['orden'] ?>">
       <span class="tpl-order">#<?= (int)$tpl['orden'] ?></span>
-      <div class="type-dot" style="background:<?= e($tpl['tipo_color'] ?? '#999') ?>" title="<?= e($tpl['tipo_nombre'] ?? '') ?>"></div>
+      <?= tipo_badge($tpl['tipo_nombre'] ?? null, $tpl['tipo_color'] ?? null) ?>
       <div class="task-desc"><?= e($tpl['nombre']) ?>
         <?php if (!empty($tpl['descripcion'])): ?><span class="tpl-desc">— <?= e($tpl['descripcion']) ?></span><?php endif; ?>
       </div>
-      <span class="tag-src"><?= e($tpl['tipo_nombre'] ?? 'Sin tipo') ?></span>
       <div class="chip <?= $tpl['activo'] ? 'resuelto' : 'pendiente' ?>"><?= $tpl['activo'] ? 'Activa' : 'Inactiva' ?></div>
       <div class="menu-wrap">
         <div class="task-menu" data-act="menu">⋯</div>
@@ -45,7 +65,7 @@ $tipos     = array_values(array_filter(db_call('fun_listar_task_types')['data'] 
   <div class="section-title">Plantillas eliminadas <span class="badge"><?= count($eliminadas) ?></span></div>
   <?php foreach ($eliminadas as $tpl): ?>
     <div class="task-row cfg-row inactive" data-id="<?= (int)$tpl['id'] ?>">
-      <div class="type-dot" style="background:<?= e($tpl['tipo_color'] ?? '#999') ?>"></div>
+      <?= tipo_badge($tpl['tipo_nombre'] ?? null, $tpl['tipo_color'] ?? null) ?>
       <div class="task-desc"><?= e($tpl['nombre']) ?></div>
       <div class="chip pendiente">Eliminada</div>
       <button class="btn-ghost" data-act="restaurar_tpl">Restaurar</button>
