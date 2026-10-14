@@ -1,4 +1,4 @@
-// TaskUp — interacción del dashboard
+// TaskUp — interacción del dashboard y lista de tareas
 const $ = (s, r = document) => r.querySelector(s);
 
 async function api(action, data = {}) {
@@ -30,6 +30,14 @@ async function run(action, data, okMsg) {
 const openModal  = id => { $(id).hidden = false; };
 const closeModals = () => document.querySelectorAll('.modal-bg').forEach(m => m.hidden = true);
 
+// Convierte "DD/MM/YYYY" o "YYYY-MM-DD" a input date; vacío => ''
+const toInputDate = s => {
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+};
+
 let currentTask = null;
 
 // ---- Delegación de eventos sobre filas ----
@@ -42,7 +50,8 @@ document.addEventListener('click', async (ev) => {
   const el  = ev.target.closest('[data-act]');
   if (!el) return;
   const row = el.closest('.task-row');
-  const id  = row ? Number(row.dataset.id) : null;
+  if (!row) return;
+  const id  = Number(row.dataset.id);
 
   switch (el.dataset.act) {
     case 'toggle': {
@@ -70,6 +79,14 @@ document.addEventListener('click', async (ev) => {
       currentTask = id;
       $('#dTitulo').textContent = row.dataset.desc;
       $('#dNota').value = row.dataset.nota || '';
+      // bloque de edición (solo ad-hoc; las fijas no se editan por ser instancias de plantilla)
+      const esAdhoc = row.dataset.adhoc === '1';
+      $('#dEditWrap').hidden = !esAdhoc;
+      if (esAdhoc) {
+        $('#dDescEdit').value = row.dataset.desc || '';
+        $('#dPrioEdit').value = row.dataset.prio || 'media';
+        $('#dLimEdit').value  = toInputDate(row.dataset.lim);
+      }
       $('#dHist').innerHTML = '';
       openModal('#mDetalle');
       const r = await api('historial', { id });
@@ -97,6 +114,20 @@ $('#nGuardar')?.addEventListener('click', async () => {
     descripcion,
     prioridad: $('#nPrio').value,
     fecha_limite: $('#nLim').value
+  });
+  if (r.ok) location.reload();
+});
+
+// ---- Editar tarea (desde detalle) ----
+$('#dEditar')?.addEventListener('click', async () => {
+  const descripcion = $('#dDescEdit').value.trim();
+  if (!descripcion) return toast('La descripción es requerida.');
+  const r = await run('editar', {
+    id: currentTask,
+    descripcion,
+    prioridad: $('#dPrioEdit').value,
+    notas: $('#dNota').value.trim(),
+    fecha_limite: $('#dLimEdit').value
   });
   if (r.ok) location.reload();
 });

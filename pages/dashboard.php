@@ -17,7 +17,7 @@ $tipos = array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => 
 $estadoLbl = ['pendiente' => 'Pendiente', 'en_gestion' => 'En gestión', 'resuelto' => 'Resuelto'];
 
 function render_task(array $t, array $lbl, bool $adhoc): void { ?>
-  <div class="task-row" data-id="<?= $t['id'] ?>" data-adhoc="<?= $adhoc ? 1 : 0 ?>" data-desc="<?= e($t['descripcion']) ?>" data-nota="<?= e($t['notas'] ?? '') ?>">
+  <div class="task-row" data-id="<?= $t['id'] ?>" data-adhoc="<?= $adhoc ? 1 : 0 ?>" data-desc="<?= e($t['descripcion']) ?>" data-nota="<?= e($t['notas'] ?? '') ?>" data-prio="<?= e($t['prioridad']) ?>" data-lim="<?= e($t['fecha_limite'] ?? '') ?>">
     <div class="cb <?= $t['completado'] ? 'done' : '' ?>" data-act="toggle" role="checkbox" aria-checked="<?= $t['completado'] ? 'true' : 'false' ?>"></div>
     <div class="type-dot" style="background:<?= e($t['tipo_color'] ?? '#999') ?>" title="<?= e($t['tipo_nombre'] ?? '') ?>"></div>
     <?php if ($adhoc && !empty($t['numero_guia'])): ?><div class="task-guide"><?= e($t['numero_guia']) ?></div><?php endif; ?>
@@ -98,6 +98,18 @@ function render_task(array $t, array $lbl, bool $adhoc): void { ?>
 <div class="modal-bg" id="mDetalle" hidden>
   <div class="modal">
     <h3 id="dTitulo">Detalle</h3>
+    <div id="dEditWrap">
+      <label>Editar descripción<textarea id="dDescEdit" rows="2"></textarea></label>
+      <div class="row2" style="margin-bottom:12px">
+        <label>Prioridad
+          <select id="dPrioEdit"><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select>
+        </label>
+        <label>Fecha límite<input type="date" id="dLimEdit"></label>
+      </div>
+      <div class="modal-actions" style="margin:0 0 14px">
+        <button class="btn-new" id="dEditar"><i class="ti ti-pencil"></i> Guardar cambios</button>
+      </div>
+    </div>
     <label>Nota<textarea id="dNota" rows="3" placeholder="Observaciones / seguimiento"></textarea></label>
     <div class="modal-actions" style="margin:0 0 12px">
       <button class="btn-new" id="dGuardar">Guardar nota</button>
@@ -109,3 +121,4 @@ function render_task(array $t, array $lbl, bool $adhoc): void { ?>
 </div>
 
 <script>window.TASKUP = { logId: <?= (int)$logId ?> };</script>
+<script src="assets/config.js"></script>
