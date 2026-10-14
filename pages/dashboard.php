@@ -17,7 +17,7 @@ $tipos = array_values(array_filter(db_call('fun_listar_task_types')['data'] ?? [
 $estadoLbl = ['pendiente' => 'Pendiente', 'en_gestion' => 'En gestión', 'resuelto' => 'Resuelto'];
 
 function render_task(array $t, array $lbl, bool $adhoc): void { ?>
-  <div class="task-row" data-id="<?= $t['id'] ?>" data-adhoc="<?= $adhoc ? 1 : 0 ?>" data-desc="<?= e($t['descripcion']) ?>" data-nota="<?= e($t['notas'] ?? '') ?>" data-prio="<?= e($t['prioridad']) ?>" data-lim="<?= e($t['fecha_limite'] ?? '') ?>">
+  <div class="task-row" data-id="<?= $t['id'] ?>" data-adhoc="<?= $adhoc ? 1 : 0 ?>" data-desc="<?= e($t['descripcion']) ?>" data-nota="<?= e($t['notas'] ?? '') ?>" data-prio="<?= e($t['prioridad']) ?>" data-lim="<?= e($t['fecha_limite'] ?? '') ?>" data-tipo="<?= e($t['tipo_id'] ?? '') ?>" data-guia="<?= e($t['numero_guia'] ?? '') ?>">
     <div class="cb <?= $t['completado'] ? 'done' : '' ?>" data-act="toggle" role="checkbox" aria-checked="<?= $t['completado'] ? 'true' : 'false' ?>"></div>
     <div class="type-dot" style="background:<?= e($t['tipo_color'] ?? '#999') ?>" title="<?= e($t['tipo_nombre'] ?? '') ?>"></div>
     <?php if ($adhoc && !empty($t['numero_guia'])): ?><div class="task-guide"><?= e($t['numero_guia']) ?></div><?php endif; ?>
@@ -101,6 +101,14 @@ function render_task(array $t, array $lbl, bool $adhoc): void { ?>
     <h3 id="dTitulo">Detalle</h3>
     <div id="dEditWrap">
       <label>Editar descripción<textarea id="dDescEdit" rows="2"></textarea></label>
+      <div class="row2" style="margin-bottom:12px">
+        <label>Tipo
+          <select id="dTipoEdit">
+            <?php foreach ($tipos as $tp): ?><option value="<?= $tp['id'] ?>"><?= e($tp['nombre']) ?></option><?php endforeach; ?>
+          </select>
+        </label>
+        <label>Número de guía<input id="dGuiaEdit" placeholder="ENV-0000000" autocomplete="off"></label>
+      </div>
       <div class="row2" style="margin-bottom:12px">
         <label>Prioridad
           <select id="dPrioEdit"><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select>

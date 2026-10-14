@@ -87,6 +87,11 @@ document.addEventListener('click', async (ev) => {
         $('#dDescEdit').value = row.dataset.desc || '';
         $('#dPrioEdit').value = row.dataset.prio || 'media';
         $('#dLimEdit').value  = toInputDate(row.dataset.lim);
+        // Tipo y guía (si el modal los incluye — página de Todas las tareas)
+        const selTipo = $('#dTipoEdit');
+        if (selTipo) selTipo.value = row.dataset.tipo || '';
+        const inpGuia = $('#dGuiaEdit');
+        if (inpGuia) inpGuia.value = row.dataset.guia || '';
       }
       $('#dHist').innerHTML = '';
       openModal('#mDetalle');
@@ -123,13 +128,17 @@ $('#nGuardar')?.addEventListener('click', async () => {
 $('#dEditar')?.addEventListener('click', async () => {
   const descripcion = $('#dDescEdit').value.trim();
   if (!descripcion) return toast('La descripción es requerida.');
-  const r = await run('editar', {
+  const payload = {
     id: currentTask,
     descripcion,
     prioridad: $('#dPrioEdit').value,
     notas: $('#dNota').value.trim(),
     fecha_limite: $('#dLimEdit').value
-  });
+  };
+  // Tipo y guía (campos opcionales del modal — Todas las tareas)
+  if ($('#dTipoEdit')) payload.tipo_id = $('#dTipoEdit').value;
+  if ($('#dGuiaEdit')) payload.numero_guia = $('#dGuiaEdit').value.trim();
+  const r = await run('editar', payload);
   if (r.ok) location.reload();
 });
 

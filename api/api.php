@@ -27,8 +27,8 @@ switch ($act) {
     case 'editar':
         $r = db_call('fun_actualizar_tarea',
             [(int)$in['id'], $in['descripcion'] ?? '', $in['prioridad'] ?? 'media',
-             $nul('notas'), $nul('fecha_limite')],
-            ['::int', '::text', '::varchar', '::text', '::date']); break;
+             $nul('notas'), $nul('fecha_limite'), $int($nul('tipo_id')), $nul('numero_guia')],
+            ['::int', '::text', '::varchar', '::text', '::date', '::int', '::varchar']); break;
     case 'nota':
         $r = db_call('fun_guardar_nota', [(int)$in['id'], $in['nota'] ?? ''], ['::int', '::text']); break;
     case 'eliminar':
