@@ -10,7 +10,7 @@
 -- ============================================================
 
 -- Catálogo de tipos de tarea
-CREATE TABLE task_types (
+CREATE TABLE IF NOT EXISTS task_types (
     id         SERIAL       PRIMARY KEY,
     nombre     VARCHAR(100) NOT NULL,
     color      CHAR(7)      NOT NULL DEFAULT '#7C3AED',
@@ -21,7 +21,7 @@ CREATE TABLE task_types (
 );
 
 -- Plantillas de tareas recurrentes (fijas del día)
-CREATE TABLE daily_templates (
+CREATE TABLE IF NOT EXISTS daily_templates (
     id          SERIAL       PRIMARY KEY,
     nombre      VARCHAR(150) NOT NULL,
     descripcion TEXT,
@@ -33,14 +33,14 @@ CREATE TABLE daily_templates (
 );
 
 -- Bitácora diaria — una fila por día
-CREATE TABLE daily_logs (
+CREATE TABLE IF NOT EXISTS daily_logs (
     id         SERIAL    PRIMARY KEY,
     fecha      DATE      NOT NULL UNIQUE,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- Tareas del día: fijas (template_id NOT NULL) o ad-hoc (template_id NULL)
-CREATE TABLE daily_tasks (
+CREATE TABLE IF NOT EXISTS daily_tasks (
     id              SERIAL      PRIMARY KEY,
     daily_log_id    INTEGER     NOT NULL REFERENCES daily_logs(id) ON DELETE CASCADE,
     template_id     INTEGER     REFERENCES daily_templates(id) ON DELETE SET NULL,
@@ -60,7 +60,7 @@ CREATE TABLE daily_tasks (
 );
 
 -- Historial de cambios por tarea
-CREATE TABLE task_logs (
+CREATE TABLE IF NOT EXISTS task_logs (
     id          SERIAL    PRIMARY KEY,
     task_id     INTEGER   NOT NULL REFERENCES daily_tasks(id) ON DELETE CASCADE,
     descripcion TEXT      NOT NULL,
@@ -71,12 +71,12 @@ CREATE TABLE task_logs (
 -- ============================================================
 -- ÍNDICES
 -- ============================================================
-CREATE INDEX idx_daily_tasks_log    ON daily_tasks(daily_log_id);
-CREATE INDEX idx_daily_tasks_tipo   ON daily_tasks(tipo_id);
-CREATE INDEX idx_daily_tasks_estado ON daily_tasks(estado);
-CREATE INDEX idx_daily_logs_fecha   ON daily_logs(fecha);
-CREATE INDEX idx_task_logs_task     ON task_logs(task_id);
-CREATE INDEX idx_daily_tasks_deleted ON daily_tasks(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_daily_tasks_log    ON daily_tasks(daily_log_id);
+CREATE INDEX IF NOT EXISTS idx_daily_tasks_tipo   ON daily_tasks(tipo_id);
+CREATE INDEX IF NOT EXISTS idx_daily_tasks_estado ON daily_tasks(estado);
+CREATE INDEX IF NOT EXISTS idx_daily_logs_fecha   ON daily_logs(fecha);
+CREATE INDEX IF NOT EXISTS idx_task_logs_task     ON task_logs(task_id);
+CREATE INDEX IF NOT EXISTS idx_daily_tasks_deleted ON daily_tasks(deleted_at);
 
 
 -- ============================================================
@@ -90,18 +90,24 @@ INSERT INTO task_types (nombre, color, icono) VALUES
     ('Consulta de cliente',         '#F59E0B', 'ti-message-circle'),
     ('Seguimiento de novedad',      '#7C3AED', 'ti-search'),
     ('Faltante',                    '#EC4899', 'ti-package-off'),
-    ('Recuperación de cartaporte',  '#059669', 'ti-file-check');
+    ('Recuperación de cartaporte',  '#059669', 'ti-file-check')
+ON CONFLICT DO NOTHING;
 
--- Las plantillas referencian los tipos por posición del INSERT anterior
-INSERT INTO daily_templates (nombre, descripcion, tipo_id, orden) VALUES
+-- Las plantillas referencian los tipos por nombre (idempotente)
+INSERT INTO daily_templates (nombre, descripcion, tipo_id, orden)
+SELECT v.nombre, v.descripcion, tt.id, v.orden
+FROM (VALUES
     ('Revisar guías sin planillar',
-        'Verificar guías que llegaron sin planillar en el turno', 2, 1),
+        'Verificar guías que llegaron sin planillar en el turno', 'Guía sin planillar',         1),
     ('Consolidar cartaportes cumplidos',
-        'Revisar y consolidar cartaportes del día',              7, 2),
+        'Revisar y consolidar cartaportes del día',               'Recuperación de cartaporte', 2),
     ('Verificar faltantes del día',
-        'Revisar el listado de faltantes y hacer seguimiento',   6, 3),
+        'Revisar el listado de faltantes y hacer seguimiento',    'Faltante',                   3),
     ('Revisar novedades pendientes',
-        'Verificar novedades abiertas de días anteriores',       5, 4);
+        'Verificar novedades abiertas de días anteriores',        'Seguimiento de novedad',     4)
+) AS v(nombre, descripcion, tipo, orden)
+JOIN task_types tt ON tt.nombre = v.tipo
+WHERE NOT EXISTS (SELECT 1 FROM daily_templates dt WHERE dt.nombre = v.nombre);
 
 
 -- ============================================================
@@ -198,7 +204,7 @@ BEGIN
     -- Si está en uso, no se elimina: queda inactivo y oculto
     SELECT COUNT(*) INTO v_en_uso
     FROM daily_tasks
-    WHERE tipo_id = p_id AND deleted_at IS NULL;
+    WHERE tipo_id = p_id;
 
     UPDATE task_types SET activo = FALSE, visible = FALSE WHERE id = p_id;
 
@@ -831,7 +837,7 @@ BEGIN
 
     -- Validar que el tipo exista y esté vigente (si se envió)
     IF p_tipo_id IS NOT NULL THEN
-        IF NOT EXISTS (SELECT 1 FROM task_types WHERE id = p_tipo_id AND deleted_at IS NULL) THEN
+        IF NOT EXISTS (SELECT 1 FROM task_types WHERE id = p_tipo_id AND visible = TRUE) THEN
             RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'El tipo de tarea seleccionado no existe o está eliminado.');
         END IF;
     END IF;

@@ -24,7 +24,7 @@ BEGIN
 
     -- Validar que el tipo exista y esté vigente (si se envió)
     IF p_tipo_id IS NOT NULL THEN
-        IF NOT EXISTS (SELECT 1 FROM task_types WHERE id = p_tipo_id AND deleted_at IS NULL) THEN
+        IF NOT EXISTS (SELECT 1 FROM task_types WHERE id = p_tipo_id AND visible = TRUE) THEN
             RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'El tipo de tarea seleccionado no existe o está eliminado.');
         END IF;
     END IF;
