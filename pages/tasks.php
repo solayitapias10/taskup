@@ -98,7 +98,7 @@ $nRes  = count(array_filter($tareas, fn($t) => $t['estado'] === 'resuelto'));
     <div class="empty">No hay tareas que coincidan con los filtros.</div>
   <?php endif; ?>
   <?php foreach ($tareas as $t): ?>
-    <div class="task-row" data-id="<?= $t['id'] ?>" data-adhoc="<?= $t['_adhoc'] ? 1 : 0 ?>" data-desc="<?= e($t['descripcion']) ?>" data-nota="<?= e($t['notas'] ?? '') ?>" data-prio="<?= e($t['prioridad']) ?>" data-lim="<?= e($t['fecha_limite'] ?? '') ?>">
+    <div class="task-row" data-id="<?= $t['id'] ?>" data-adhoc="<?= $t['_adhoc'] ? 1 : 0 ?>" data-desc="<?= e($t['descripcion']) ?>" data-nota="<?= e($t['notas'] ?? '') ?>" data-prio="<?= e($t['prioridad']) ?>" data-lim="<?= e($t['fecha_limite'] ?? '') ?>" data-tipo="<?= e($t['tipo_id'] ?? '') ?>" data-guia="<?= e($t['numero_guia'] ?? '') ?>">
       <div class="cb <?= $t['completado'] ? 'done' : '' ?>" data-act="toggle" role="checkbox" aria-checked="<?= $t['completado'] ? 'true' : 'false' ?>"></div>
       <div class="type-dot" style="background:<?= e($t['tipo_color'] ?? '#999') ?>" title="<?= e($t['tipo_nombre'] ?? '') ?>"></div>
       <?php if (!empty($t['numero_guia'])): ?><div class="task-guide"><?= e($t['numero_guia']) ?></div><?php endif; ?>
@@ -155,6 +155,14 @@ $nRes  = count(array_filter($tareas, fn($t) => $t['estado'] === 'resuelto'));
     <h3 id="dTitulo">Detalle</h3>
     <div id="dEditWrap">
       <label>Editar descripción<textarea id="dDescEdit" rows="2"></textarea></label>
+      <div class="row2" style="margin-bottom:12px">
+        <label>Tipo
+          <select id="dTipoEdit">
+            <?php foreach ($tipos as $tp): ?><option value="<?= $tp['id'] ?>"><?= e($tp['nombre']) ?></option><?php endforeach; ?>
+          </select>
+        </label>
+        <label>Número de guía<input id="dGuiaEdit" placeholder="ENV-0000000" autocomplete="off"></label>
+      </div>
       <div class="row2" style="margin-bottom:12px">
         <label>Prioridad
           <select id="dPrioEdit"><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select>
