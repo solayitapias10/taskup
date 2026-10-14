@@ -14,6 +14,23 @@ $stats = db_call('fun_stats_dia', [$hoy], ['::date'])['data'] ?? ['total'=>0,'pe
 $dia   = db_call('fun_listar_tareas_dia', [$hoy], ['::date'])['data'] ?? ['fijas'=>[],'adhoc'=>[]];
 $tipos = array_values(array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => $t['activo'] && $t['visible']));
 
+// Las tareas fijas se generan con tipo heredado de la plantilla; si alguna quedó
+// sin tipo (plantilla antigua o FK limpiada), se le asigna uno para que SIEMPRE
+// muestre su etiqueta de tipo.
+if (!function_exists('asignar_tipos_por_defecto')) {
+  function asignar_tipos_por_defecto(array &$lista, array $tipos): void {
+    if (!$tipos) return;
+    foreach ($lista as &$t) {
+      if (!empty($t['tipo_nombre'])) continue;
+      $tp = $tipos[0];
+      $t['tipo_id'] = $tp['id']; $t['tipo_nombre'] = $tp['nombre']; $t['tipo_color'] = $tp['color'];
+    }
+    unset($t);
+  }
+}
+asignar_tipos_por_defecto($dia['fijas'], $tipos);
+asignar_tipos_por_defecto($dia['adhoc'], $tipos);
+
 $estadoLbl = ['pendiente' => 'Pendiente', 'en_gestion' => 'En gestión', 'resuelto' => 'Resuelto'];
 
 // Etiqueta visible del tipo: nombre corto (primera frase) + color del tipo
@@ -30,10 +47,12 @@ function tipo_badge(?string $nombre, ?string $color): string {
     'recuperación de cartaporte'=> 'Cartaporte',
   ];
   $txt = $mapa[$corto] ?? mb_substr($nombre, 0, 22);
-  $color = $color ?: '#7C3AED';
-  return '<span class="tag-tipo" style="color:' . e($color) . ';background:color-mix(in srgb,' . e($color) . ' 12%,#fff);border:1px solid color-mix(in srgb,' . e($color) . ' 25%,#fff)">'
-       . '<span class="dot" style="background:' . e($color) . '"></span>' . e($txt) . '</span>';
+  // Color normalizado (por si la BD lo guarda con espacios o formato CHAR(7))
+  $hex = preg_match('/^#?([0-9a-fA-F]{6})$/', trim((string)$color), $m) ? '#' . $m[1] : '#7C3AED';
+  return '<span class="tag-tipo" style="--tc:' . $hex . '"><span class="dot"></span>' . e($txt) . '</span>';
 }
+
+// (la versión de la función asignar_tipos_por_defecto se define arriba, junto a los datos)
 
 function render_task(array $t, array $lbl, bool $adhoc): void { ?>
   <div class="task-row" data-id="<?= $t['id'] ?>" data-adhoc="<?= $adhoc ? 1 : 0 ?>" data-desc="<?= e($t['descripcion']) ?>" data-nota="<?= e($t['notas'] ?? '') ?>" data-prio="<?= e($t['prioridad']) ?>" data-lim="<?= e($t['fecha_limite'] ?? '') ?>" data-tipo="<?= e($t['tipo_id'] ?? '') ?>" data-guia="<?= e($t['numero_guia'] ?? '') ?>">

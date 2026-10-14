@@ -20,9 +20,9 @@ if (!function_exists('tipo_badge')) {
       'recuperación de cartaporte'=> 'Cartaporte',
     ];
     $txt = $mapa[$corto] ?? mb_substr($nombre, 0, 22);
-    $color = $color ?: '#7C3AED';
-    return '<span class="tag-tipo" style="color:' . e($color) . ';background:color-mix(in srgb,' . e($color) . ' 12%,#fff);border:1px solid color-mix(in srgb,' . e($color) . ' 25%,#fff)">'
-         . '<span class="dot" style="background:' . e($color) . '"></span>' . e($txt) . '</span>';
+    // Color normalizado (por si la BD lo guarda con espacios o formato CHAR(7))
+    $hex = preg_match('/^#?([0-9a-fA-F]{6})$/', trim((string)$color), $m) ? '#' . $m[1] : '#7C3AED';
+    return '<span class="tag-tipo" style="--tc:' . $hex . '"><span class="dot"></span>' . e($txt) . '</span>';
   }
 }
 ?>
