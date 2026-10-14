@@ -256,7 +256,8 @@ BEGIN
             'tipo_color',  tt.color,
             'tipo_icono',  tt.icono,
             'orden',       dt.orden,
-            'activo',      dt.activo
+            'activo',      dt.activo,
+            'visible',     dt.visible
         ) ORDER BY dt.orden, dt.nombre
     ) INTO v_data
     FROM daily_templates dt
