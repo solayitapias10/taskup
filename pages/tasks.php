@@ -6,7 +6,7 @@ if (!$ab['ok']) { echo '<div class="alert">Error: ' . e($ab['mensaje'] ?? '') . 
 $logId = $ab['data']['log_id'];
 
 $dia   = db_call('fun_listar_tareas_dia', [$hoy], ['::date'])['data'] ?? ['fijas' => [], 'adhoc' => []];
-$tipos = array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => $t['activo']);
+$tipos = array_values(array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => $t['activo'] && $t['visible']));
 
 $fijo   = $_GET['fijo'] ?? 'todos';                 // fijos | adhoc | todos
 $estado = $_GET['estado'] ?? 'todos';               // pendiente | en_gestion | resuelto | todos

@@ -39,10 +39,23 @@ document.addEventListener('click', async (ev) => {
     return;
   }
 
-  const elT = ev.target.closest('[data-act="editar_tipo"], [data-act="toggle_tipo"]');
+  const elT = ev.target.closest('[data-act="editar_tipo"], [data-act="toggle_tipo"], [data-act="eliminar_tipo"], [data-act="restaurar_tipo"]');
   if (elT) {
     const row = elT.closest('.cfg-row');
     const id  = Number(row.dataset.id);
+    if (elT.dataset.act === 'eliminar_tipo') {
+      if (!confirm('¿Eliminar este tipo? (soft delete: las tareas que lo usan lo conservan; podrás restaurarlo)')) return;
+      const r = await apiCfg('eliminar_tipo', { id });
+      toastCfg(r.ok ? (r.mensaje || 'Eliminado.') : (r.mensaje || 'Error.'));
+      if (r.ok) location.reload();
+      return;
+    }
+    if (elT.dataset.act === 'restaurar_tipo') {
+      const r = await apiCfg('toggle_tipo', { id });
+      toastCfg(r.ok ? (r.mensaje || 'Restaurado.') : (r.mensaje || 'Error.'));
+      if (r.ok) location.reload();
+      return;
+    }
     if (elT.dataset.act === 'toggle_tipo') {
       const r = await apiCfg('toggle_tipo', { id });
       toastCfg(r.ok ? (r.mensaje || 'Listo.') : (r.mensaje || 'Error.'));
@@ -78,10 +91,23 @@ document.addEventListener('click', async (ev) => {
     return;
   }
 
-  const elP = ev.target.closest('[data-act="editar_tpl"], [data-act="toggle_tpl"]');
+  const elP = ev.target.closest('[data-act="editar_tpl"], [data-act="toggle_tpl"], [data-act="eliminar_tpl"], [data-act="restaurar_tpl"]');
   if (elP) {
     const row = elP.closest('.cfg-row');
     const id  = Number(row.dataset.id);
+    if (elP.dataset.act === 'eliminar_tpl') {
+      const limpiar = confirm('¿Eliminar esta plantilla fija?\n\nAceptar = ocultarla también de la bitácora de HOY.\nCancelar = solo eliminarla (las tareas ya generadas se conservan).');
+      const r = await apiCfg('eliminar_template', { id, eliminar_tareas: limpiar });
+      toastCfg(r.ok ? (r.mensaje || 'Eliminada.') : (r.mensaje || 'Error.'));
+      if (r.ok) location.reload();
+      return;
+    }
+    if (elP.dataset.act === 'restaurar_tpl') {
+      const r = await apiCfg('restaurar_template', { id });
+      toastCfg(r.ok ? (r.mensaje || 'Restaurada.') : (r.mensaje || 'Error.'));
+      if (r.ok) location.reload();
+      return;
+    }
     if (elP.dataset.act === 'toggle_tpl') {
       const r = await apiCfg('toggle_template', { id });
       toastCfg(r.ok ? (r.mensaje || 'Listo.') : (r.mensaje || 'Error.'));

@@ -15,7 +15,8 @@ CREATE TABLE task_types (
     nombre     VARCHAR(100) NOT NULL,
     color      CHAR(7)      NOT NULL DEFAULT '#7C3AED',
     icono      VARCHAR(50)  NOT NULL DEFAULT 'ti-tag',
-    activo     BOOLEAN      NOT NULL DEFAULT TRUE,
+    activo     BOOLEAN      NOT NULL DEFAULT TRUE,   -- aparece en los selects de tareas
+    visible    BOOLEAN      NOT NULL DEFAULT TRUE,   -- FALSE = eliminado (soft delete)
     created_at TIMESTAMP    NOT NULL DEFAULT NOW()
 );
 
@@ -26,7 +27,8 @@ CREATE TABLE daily_templates (
     descripcion TEXT,
     tipo_id     INTEGER      REFERENCES task_types(id) ON DELETE SET NULL,
     orden       SMALLINT     NOT NULL DEFAULT 0,
-    activo      BOOLEAN      NOT NULL DEFAULT TRUE,
+    activo      BOOLEAN      NOT NULL DEFAULT TRUE,  -- se generan en la bitácora del día
+    visible     BOOLEAN      NOT NULL DEFAULT TRUE,  -- FALSE = eliminada (soft delete)
     created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
 );
 
@@ -118,8 +120,9 @@ BEGIN
             'id',     id,
             'nombre', nombre,
             'color',  color,
-            'icono',  icono,
-            'activo', activo
+            'icono',   icono,
+            'activo',  activo,
+            'visible', visible
         ) ORDER BY nombre
     ) INTO v_data
     FROM task_types;
@@ -180,6 +183,35 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+-- Eliminar tipo — SOFT DELETE: desactiva + oculta (no borra físicamente;
+-- las tareas que lo usan conservan su referencia histórica)
+CREATE OR REPLACE FUNCTION fun_eliminar_tipo(p_id INTEGER)
+RETURNS JSONB
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_en_uso INTEGER;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM task_types WHERE id = p_id) THEN
+        RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Tipo no encontrado.');
+    END IF;
+
+    -- Si está en uso, no se elimina: queda inactivo y oculto
+    SELECT COUNT(*) INTO v_en_uso
+    FROM daily_tasks
+    WHERE tipo_id = p_id AND deleted_at IS NULL;
+
+    UPDATE task_types SET activo = FALSE, visible = FALSE WHERE id = p_id;
+
+    RETURN jsonb_build_object('ok', TRUE, 'mensaje',
+        CASE WHEN v_en_uso > 0
+             THEN 'Tipo ocultado (en uso en ' || v_en_uso || ' tarea(s); las tareas conservan su tipo).'
+             ELSE 'Tipo eliminado.'
+        END);
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
+END;
+$$;
+
 -- Activar / desactivar tipo
 CREATE OR REPLACE FUNCTION fun_toggle_task_type(p_id INTEGER)
 RETURNS JSONB
@@ -187,7 +219,7 @@ LANGUAGE plpgsql AS $$
 DECLARE
     v_activo BOOLEAN;
 BEGIN
-    UPDATE task_types SET activo = NOT activo WHERE id = p_id
+    UPDATE task_types SET activo = NOT activo, visible = TRUE WHERE id = p_id
     RETURNING activo INTO v_activo;
 
     IF NOT FOUND THEN
@@ -207,7 +239,7 @@ $$;
 -- FUNCIONES — DAILY TEMPLATES
 -- ============================================================
 
--- Listar plantillas con datos del tipo asociado
+-- Listar plantillas visibles con datos del tipo asociado
 CREATE OR REPLACE FUNCTION fun_listar_templates()
 RETURNS JSONB
 LANGUAGE plpgsql AS $$
@@ -226,6 +258,37 @@ BEGIN
             'orden',       dt.orden,
             'activo',      dt.activo
         ) ORDER BY dt.orden, dt.nombre
+    ) INTO v_data
+    FROM daily_templates dt
+    LEFT JOIN task_types tt ON tt.id = dt.tipo_id
+    WHERE dt.visible = TRUE;
+
+    RETURN jsonb_build_object('ok', TRUE, 'data', COALESCE(v_data, '[]'::JSONB));
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
+END;
+$$;
+
+-- Listar TODAS las plantillas (incluidas las eliminadas por soft delete)
+CREATE OR REPLACE FUNCTION fun_listar_templates_todas()
+RETURNS JSONB
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_data JSONB;
+BEGIN
+    SELECT jsonb_agg(
+        jsonb_build_object(
+            'id',          dt.id,
+            'nombre',      dt.nombre,
+            'descripcion', dt.descripcion,
+            'tipo_id',     dt.tipo_id,
+            'tipo_nombre', tt.nombre,
+            'tipo_color',  tt.color,
+            'tipo_icono',  tt.icono,
+            'orden',       dt.orden,
+            'activo',      dt.activo,
+            'visible',     dt.visible
+        ) ORDER BY dt.visible DESC, dt.orden, dt.nombre
     ) INTO v_data
     FROM daily_templates dt
     LEFT JOIN task_types tt ON tt.id = dt.tipo_id;
@@ -256,14 +319,17 @@ BEGIN
     VALUES (TRIM(p_nombre), p_descripcion, p_tipo_id, p_orden)
     RETURNING id INTO v_id;
 
-    RETURN jsonb_build_object('ok', TRUE, 'mensaje', 'Plantilla creada.',
+    -- Generar la tarea fija en la bitácora de HOY al instante
+    PERFORM fun_abrir_bitacora(CURRENT_DATE);
+
+    RETURN jsonb_build_object('ok', TRUE, 'mensaje', 'Plantilla creada (tarea fijada para hoy).',
         'data', jsonb_build_object('id', v_id));
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
 END;
 $$;
 
--- Actualizar plantilla
+-- Actualizar plantilla + propagar los cambios a las tareas ya generadas
 CREATE OR REPLACE FUNCTION fun_update_template(
     p_id          INTEGER,
     p_nombre      VARCHAR(150),
@@ -273,6 +339,8 @@ CREATE OR REPLACE FUNCTION fun_update_template(
 )
 RETURNS JSONB
 LANGUAGE plpgsql AS $$
+DECLARE
+    v_sync JSONB;
 BEGIN
     UPDATE daily_templates
     SET nombre      = TRIM(p_nombre),
@@ -285,7 +353,68 @@ BEGIN
         RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Plantilla no encontrada.');
     END IF;
 
-    RETURN jsonb_build_object('ok', TRUE, 'mensaje', 'Plantilla actualizada.');
+    -- Propagar a las instancias existentes (hoy + días anteriores)
+    v_sync := fun_sincronizar_template(p_id);
+
+    RETURN jsonb_build_object('ok', TRUE, 'mensaje',
+        'Plantilla actualizada. ' || COALESCE(v_sync->>'mensaje', ''),
+        'data', jsonb_build_object('sincronizado', v_sync));
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
+END;
+$$;
+
+-- Eliminar plantilla — SOFT DELETE: se oculta y deja de generarse en la bitácora.
+-- Las instancias ya creadas en días anteriores se conservan como registro histórico;
+-- si quieres ocultar también las tareas ya generadas de hoy, usa p_eliminar_tareas = TRUE.
+CREATE OR REPLACE FUNCTION fun_eliminar_template(
+    p_id               INTEGER,
+    p_eliminar_tareas  BOOLEAN DEFAULT FALSE
+)
+RETURNS JSONB
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_tareas INTEGER := 0;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM daily_templates WHERE id = p_id) THEN
+        RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Plantilla no encontrada.');
+    END IF;
+
+    -- Ocultar la plantilla (ya no aparece ni se genera en nuevos días)
+    UPDATE daily_templates SET visible = FALSE, activo = FALSE WHERE id = p_id;
+
+    -- Opcional: soft-delete de las instancias pendientes aún no completadas
+    IF p_eliminar_tareas THEN
+        UPDATE daily_tasks SET deleted_at = NOW()
+        WHERE template_id = p_id
+          AND deleted_at IS NULL
+          AND completado = FALSE;
+
+        GET DIAGNOSTICS v_tareas = ROW_COUNT;
+    END IF;
+
+    RETURN jsonb_build_object('ok', TRUE, 'mensaje',
+        'Plantilla eliminada.' ||
+        CASE WHEN v_tareas > 0
+             THEN ' Se ocultaron ' || v_tareas || ' tarea(s) pendientes de la bitácora.'
+             ELSE '' END);
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
+END;
+$$;
+
+-- Restaurar plantilla eliminada (vuelve a ser visible y activa)
+CREATE OR REPLACE FUNCTION fun_restaurar_template(p_id INTEGER)
+RETURNS JSONB
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM daily_templates WHERE id = p_id) THEN
+        RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Plantilla no encontrada.');
+    END IF;
+
+    UPDATE daily_templates SET visible = TRUE, activo = TRUE WHERE id = p_id;
+
+    RETURN jsonb_build_object('ok', TRUE, 'mensaje', 'Plantilla restaurada.');
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
 END;
@@ -298,11 +427,19 @@ LANGUAGE plpgsql AS $$
 DECLARE
     v_activo BOOLEAN;
 BEGIN
-    UPDATE daily_templates SET activo = NOT activo WHERE id = p_id
+    UPDATE daily_templates SET activo = NOT activo, visible = TRUE WHERE id = p_id
     RETURNING activo INTO v_activo;
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Plantilla no encontrada.');
+    END IF;
+
+    -- Al reactivarla: restaurar sus instancias borradas suavemente y propagar sus datos
+    IF v_activo THEN
+        UPDATE daily_tasks SET deleted_at = NULL
+        WHERE template_id = p_id AND deleted_at IS NOT NULL;
+
+        PERFORM fun_sincronizar_template(p_id);
     END IF;
 
     RETURN jsonb_build_object('ok', TRUE,
@@ -334,30 +471,64 @@ BEGIN
     IF NOT FOUND THEN
         INSERT INTO daily_logs (fecha) VALUES (p_fecha) RETURNING id INTO v_log_id;
         v_es_nuevo := TRUE;
-
-        -- Generar tareas fijas desde las plantillas activas
-        INSERT INTO daily_tasks (daily_log_id, template_id, tipo_id, descripcion, estado, prioridad)
-        SELECT
-            v_log_id,
-            dt.id,
-            dt.tipo_id,
-            dt.nombre,
-            'pendiente',
-            'media'
-        FROM daily_templates dt
-        WHERE dt.activo = TRUE
-          AND NOT EXISTS (                       -- respetar borrados suaves ya existentes
-              SELECT 1 FROM daily_tasks t2
-              WHERE t2.daily_log_id = v_log_id
-                AND t2.template_id  = dt.id
-          )
-        ORDER BY dt.orden, dt.nombre;
     END IF;
+
+    -- Sincronizar SIEMPRE: las plantillas nuevas/activadas que aún no tengan
+    -- instancia en este día se generan al instante (no solo al crear la bitácora).
+    -- Respeta borrados suaves: si la tarea del día fue eliminada, no se regenera.
+    INSERT INTO daily_tasks (daily_log_id, template_id, tipo_id, descripcion, estado, prioridad)
+    SELECT
+        v_log_id,
+        dt.id,
+        dt.tipo_id,
+        dt.nombre,
+        'pendiente',
+        'media'
+    FROM daily_templates dt
+    WHERE dt.activo = TRUE
+      AND dt.visible = TRUE
+      AND NOT EXISTS (
+          SELECT 1 FROM daily_tasks t2
+          WHERE t2.daily_log_id = v_log_id
+            AND t2.template_id  = dt.id
+      )
+    ORDER BY dt.orden, dt.nombre;
 
     RETURN jsonb_build_object(
         'ok',   TRUE,
         'data', jsonb_build_object('log_id', v_log_id, 'es_nuevo', v_es_nuevo)
     );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
+END;
+$$;
+
+-- Propagar los cambios de una plantilla a sus instancias ya generadas
+-- (hoy y días anteriores): nombre, descripción, tipo y orden.
+CREATE OR REPLACE FUNCTION fun_sincronizar_template(p_template_id INTEGER)
+RETURNS JSONB
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_afectadas INTEGER := 0;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM daily_templates WHERE id = p_template_id) THEN
+        RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Plantilla no encontrada.');
+    END IF;
+
+    UPDATE daily_tasks t
+    SET descripcion = dt.nombre,
+        tipo_id     = dt.tipo_id,
+        estado      = CASE WHEN t.completado THEN t.estado ELSE 'pendiente' END
+    FROM daily_templates dt
+    WHERE t.template_id = dt.id
+      AND t.template_id = p_template_id
+      AND t.deleted_at IS NULL;
+
+    GET DIAGNOSTICS v_afectadas = ROW_COUNT;
+
+    RETURN jsonb_build_object('ok', TRUE, 'mensaje',
+        'Tareas actualizadas desde la plantilla: ' || v_afectadas,
+        'data', jsonb_build_object('afectadas', v_afectadas));
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
 END;
