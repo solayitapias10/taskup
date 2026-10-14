@@ -1,6 +1,6 @@
 <?php
 require_once __DIR__ . '/config/db.php';
-$pages = ['dashboard'];           // se irán sumando: tasks, archive, templates, types
+$pages = ['dashboard', 'tasks', 'archive', 'templates', 'types'];
 $p = $_GET['p'] ?? 'dashboard';
 if (!in_array($p, $pages, true)) { $p = 'dashboard'; }
 

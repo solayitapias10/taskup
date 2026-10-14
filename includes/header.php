@@ -11,11 +11,11 @@
 <aside class="sidebar">
   <div class="logo">Task<span>Up</span></div>
   <a class="nav-item <?= $p === 'dashboard' ? 'active' : '' ?>" href="index.php?p=dashboard"><i class="ti ti-layout-dashboard"></i> Bitácora del día</a>
-  <a class="nav-item disabled"><i class="ti ti-checklist"></i> Todas las tareas</a>
-  <a class="nav-item disabled"><i class="ti ti-archive"></i> Archivo</a>
+  <a class="nav-item <?= $p === 'tasks' ? 'active' : '' ?>" href="index.php?p=tasks"><i class="ti ti-checklist"></i> Todas las tareas</a>
+  <a class="nav-item <?= $p === 'archive' ? 'active' : '' ?>" href="index.php?p=archive"><i class="ti ti-archive"></i> Archivo</a>
   <div class="nav-section">Configuración</div>
-  <a class="nav-item disabled"><i class="ti ti-repeat"></i> Tareas fijas</a>
-  <a class="nav-item disabled"><i class="ti ti-tags"></i> Tipos</a>
+  <a class="nav-item <?= $p === 'templates' ? 'active' : '' ?>" href="index.php?p=templates"><i class="ti ti-repeat"></i> Tareas fijas</a>
+  <a class="nav-item <?= $p === 'types' ? 'active' : '' ?>" href="index.php?p=types"><i class="ti ti-tags"></i> Tipos</a>
   <div style="flex:1"></div>
   <div class="nav-item"><i class="ti ti-user-circle"></i> Solayi</div>
 </aside>
