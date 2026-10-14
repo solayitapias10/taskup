@@ -32,7 +32,9 @@ switch ($act) {
     case 'nota':
         $r = db_call('fun_guardar_nota', [(int)$in['id'], $in['nota'] ?? ''], ['::int', '::text']); break;
     case 'eliminar':
-        $r = db_call('fun_eliminar_tarea', [(int)$in['id']], ['::int']); break;
+        $r = db_call('fun_eliminar_tarea', [(int)$in['id'], $nul('motivo')], ['::int', '::text']); break;
+    case 'restaurar':
+        $r = db_call('fun_restaurar_tarea', [(int)$in['id']], ['::int']); break;
     case 'historial':
         $r = db_call('fun_historial_tarea', [(int)$in['id']], ['::int']); break;
 

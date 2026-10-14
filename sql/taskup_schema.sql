@@ -53,6 +53,7 @@ CREATE TABLE daily_tasks (
     fecha_limite    DATE,
     hora_completado TIMESTAMP,
     notas           TEXT,
+    deleted_at      TIMESTAMP,                          -- soft delete (NULL = vigente)
     created_at      TIMESTAMP   NOT NULL DEFAULT NOW()
 );
 
@@ -73,6 +74,7 @@ CREATE INDEX idx_daily_tasks_tipo   ON daily_tasks(tipo_id);
 CREATE INDEX idx_daily_tasks_estado ON daily_tasks(estado);
 CREATE INDEX idx_daily_logs_fecha   ON daily_logs(fecha);
 CREATE INDEX idx_task_logs_task     ON task_logs(task_id);
+CREATE INDEX idx_daily_tasks_deleted ON daily_tasks(deleted_at);
 
 
 -- ============================================================
@@ -344,6 +346,11 @@ BEGIN
             'media'
         FROM daily_templates dt
         WHERE dt.activo = TRUE
+          AND NOT EXISTS (                       -- respetar borrados suaves ya existentes
+              SELECT 1 FROM daily_tasks t2
+              WHERE t2.daily_log_id = v_log_id
+                AND t2.template_id  = dt.id
+          )
         ORDER BY dt.orden, dt.nombre;
     END IF;
 
@@ -397,7 +404,8 @@ BEGIN
     FROM daily_tasks t
     LEFT JOIN task_types     tt ON tt.id = t.tipo_id
     LEFT JOIN daily_templates dm ON dm.id = t.template_id
-    WHERE t.daily_log_id = v_log_id AND t.template_id IS NOT NULL;
+    WHERE t.daily_log_id = v_log_id AND t.template_id IS NOT NULL
+      AND t.deleted_at IS NULL;
 
     -- Tareas ad-hoc ordenadas por creación
     SELECT jsonb_agg(
@@ -419,7 +427,8 @@ BEGIN
     ) INTO v_adhoc
     FROM daily_tasks t
     LEFT JOIN task_types tt ON tt.id = t.tipo_id
-    WHERE t.daily_log_id = v_log_id AND t.template_id IS NULL;
+    WHERE t.daily_log_id = v_log_id AND t.template_id IS NULL
+      AND t.deleted_at IS NULL;
 
     RETURN jsonb_build_object(
         'ok',   TRUE,
@@ -460,7 +469,8 @@ BEGIN
                              AND fecha_limite < CURRENT_DATE)
         INTO v_total, v_pend, v_resuel, v_vencid
         FROM daily_tasks
-        WHERE daily_log_id = v_log_id;
+        WHERE daily_log_id = v_log_id
+          AND deleted_at IS NULL;
     END IF;
 
     RETURN jsonb_build_object(
@@ -530,7 +540,7 @@ DECLARE
     v_actual BOOLEAN;
     v_nuevo  BOOLEAN;
 BEGIN
-    SELECT completado INTO v_actual FROM daily_tasks WHERE id = p_task_id;
+    SELECT completado INTO v_actual FROM daily_tasks WHERE id = p_task_id AND deleted_at IS NULL;
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Tarea no encontrada.');
@@ -543,7 +553,7 @@ BEGIN
         estado          = CASE WHEN v_nuevo THEN 'resuelto' ELSE 'pendiente' END,
         hora_completado = CASE WHEN v_nuevo THEN NOW() ELSE NULL END,
         notas           = COALESCE(p_notas, notas)
-    WHERE id = p_task_id;
+    WHERE id = p_task_id AND deleted_at IS NULL;
 
     INSERT INTO task_logs (task_id, descripcion)
     VALUES (p_task_id,
@@ -574,7 +584,7 @@ BEGIN
         completado      = (p_estado = 'resuelto'),
         hora_completado = CASE WHEN p_estado = 'resuelto' THEN NOW() ELSE NULL END,
         notas           = COALESCE(p_notas, notas)
-    WHERE id = p_task_id;
+    WHERE id = p_task_id AND deleted_at IS NULL;
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Tarea no encontrada.');
@@ -605,7 +615,7 @@ BEGIN
         prioridad    = p_prioridad,
         notas        = p_notas,
         fecha_limite = p_fecha_limite
-    WHERE id = p_task_id;
+    WHERE id = p_task_id AND deleted_at IS NULL;
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Tarea no encontrada.');
@@ -619,27 +629,77 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- Eliminar tarea — solo ad-hoc (template_id NULL); las fijas no se pueden borrar
-CREATE OR REPLACE FUNCTION fun_eliminar_tarea(p_task_id INTEGER)
+-- Eliminar tarea — SOFT DELETE: marca deleted_at, el registro queda intacto
+-- Aplica a cualquier tarea (fija o ad-hoc). No borra físicamente nada.
+CREATE OR REPLACE FUNCTION fun_eliminar_tarea(
+    p_task_id INTEGER,
+    p_motivo  TEXT DEFAULT NULL
+)
 RETURNS JSONB
 LANGUAGE plpgsql AS $$
 DECLARE
-    v_template_id INTEGER;
+    v_deleted_at TIMESTAMP;
+    v_msg        TEXT;
 BEGIN
-    SELECT template_id INTO v_template_id FROM daily_tasks WHERE id = p_task_id;
+    SELECT deleted_at INTO v_deleted_at
+    FROM daily_tasks
+    WHERE id = p_task_id;
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Tarea no encontrada.');
     END IF;
 
-    IF v_template_id IS NOT NULL THEN
-        RETURN jsonb_build_object('ok', FALSE,
-            'mensaje', 'Las tareas fijas no se pueden eliminar. Puedes marcarla como resuelta.');
+    IF v_deleted_at IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'La tarea ya estaba eliminada.');
     END IF;
 
-    DELETE FROM daily_tasks WHERE id = p_task_id;
+    UPDATE daily_tasks
+    SET deleted_at = NOW()
+    WHERE id = p_task_id
+    RETURNING deleted_at INTO v_deleted_at;
 
-    RETURN jsonb_build_object('ok', TRUE, 'mensaje', 'Tarea eliminada.');
+    -- Registrar la acción en el historial de la tarea
+    INSERT INTO task_logs (task_id, descripcion)
+    VALUES (p_task_id,
+        'Tarea eliminada (soft delete): ' || TO_CHAR(v_deleted_at, 'DD/MM/YYYY HH24:MI')
+        || CASE WHEN NULLIF(TRIM(COALESCE(p_motivo, '')), '') IS NULL
+                THEN '' ELSE ' — Motivo: ' || TRIM(p_motivo) END);
+
+    v_msg := 'Tarea eliminada.';
+
+    RETURN jsonb_build_object('ok', TRUE, 'mensaje', v_msg,
+        'data', jsonb_build_object('id', p_task_id, 'deleted_at',
+                                   TO_CHAR(v_deleted_at, 'DD/MM/YYYY HH24:MI')));
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
+END;
+$$;
+
+-- Restaurar una tarea eliminada con soft delete
+CREATE OR REPLACE FUNCTION fun_restaurar_tarea(p_task_id INTEGER)
+RETURNS JSONB
+LANGUAGE plpgsql AS $$
+DECLARE
+    v_deleted_at TIMESTAMP;
+BEGIN
+    SELECT deleted_at INTO v_deleted_at
+    FROM daily_tasks
+    WHERE id = p_task_id;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Tarea no encontrada.');
+    END IF;
+
+    IF v_deleted_at IS NULL THEN
+        RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'La tarea no está eliminada.');
+    END IF;
+
+    UPDATE daily_tasks SET deleted_at = NULL WHERE id = p_task_id;
+
+    INSERT INTO task_logs (task_id, descripcion)
+    VALUES (p_task_id, 'Tarea restaurada.');
+
+    RETURN jsonb_build_object('ok', TRUE, 'mensaje', 'Tarea restaurada.');
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
 END;
@@ -653,11 +713,11 @@ CREATE OR REPLACE FUNCTION fun_guardar_nota(
 RETURNS JSONB
 LANGUAGE plpgsql AS $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM daily_tasks WHERE id = p_task_id) THEN
+    IF NOT EXISTS (SELECT 1 FROM daily_tasks WHERE id = p_task_id AND deleted_at IS NULL) THEN
         RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Tarea no encontrada.');
     END IF;
 
-    UPDATE daily_tasks SET notas = TRIM(p_nota) WHERE id = p_task_id;
+    UPDATE daily_tasks SET notas = TRIM(p_nota) WHERE id = p_task_id AND deleted_at IS NULL;
 
     INSERT INTO task_logs (task_id, descripcion)
     VALUES (p_task_id, 'Nota guardada: ' || TRIM(p_nota));
@@ -726,6 +786,7 @@ BEGIN
     JOIN  daily_logs   l  ON l.id  = t.daily_log_id
     LEFT JOIN task_types tt ON tt.id = t.tipo_id
     WHERE t.completado = TRUE
+      AND t.deleted_at IS NULL
       AND (p_fecha_desde IS NULL OR l.fecha >= p_fecha_desde)
       AND (p_fecha_hasta IS NULL OR l.fecha <= p_fecha_hasta)
       AND (

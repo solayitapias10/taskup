@@ -70,8 +70,9 @@ document.addEventListener('click', async (ev) => {
       break;
     }
     case 'eliminar': {
-      if (!confirm('¿Eliminar esta tarea?')) break;
-      const r = await run('eliminar', { id });
+      if (!confirm('¿Eliminar esta tarea? (soft delete: queda registrada en el historial)')) break;
+      const motivo = prompt('Motivo de la eliminación (opcional):') || '';
+      const r = await run('eliminar', { id, motivo });
       if (r.ok) location.reload();
       break;
     }
