@@ -365,11 +365,13 @@ END;
 $$;
 
 -- Eliminar plantilla — SOFT DELETE: se oculta y deja de generarse en la bitácora.
--- Las instancias ya creadas en días anteriores se conservan como registro histórico;
--- si quieres ocultar también las tareas ya generadas de hoy, usa p_eliminar_tareas = TRUE.
+-- SIEMPRE oculta también las tareas ya generadas por esa plantilla (hoy y días
+-- anteriores) con soft delete, para que no queden "fantasmas" en el dashboard.
+-- p_eliminar_tareas queda por compatibilidad; puedes pasar FALSE si quieres
+-- conservarlas como registro histórico.
 CREATE OR REPLACE FUNCTION fun_eliminar_template(
     p_id               INTEGER,
-    p_eliminar_tareas  BOOLEAN DEFAULT FALSE
+    p_eliminar_tareas  BOOLEAN DEFAULT TRUE
 )
 RETURNS JSONB
 LANGUAGE plpgsql AS $$
@@ -383,12 +385,13 @@ BEGIN
     -- Ocultar la plantilla (ya no aparece ni se genera en nuevos días)
     UPDATE daily_templates SET visible = FALSE, activo = FALSE WHERE id = p_id;
 
-    -- Opcional: soft-delete de las instancias pendientes aún no completadas
-    IF p_eliminar_tareas THEN
+    -- Soft-delete de las instancias generadas por esta plantilla (hoy y días
+    -- anteriores). Por defecto SIEMPRE se ocultan; pasa p_eliminar_tareas=FALSE
+    -- solo si quieres conservarlas como registro histórico.
+    IF p_eliminar_tareas IS NULL OR p_eliminar_tareas THEN
         UPDATE daily_tasks SET deleted_at = NOW()
         WHERE template_id = p_id
-          AND deleted_at IS NULL
-          AND completado = FALSE;
+          AND deleted_at IS NULL;
 
         GET DIAGNOSTICS v_tareas = ROW_COUNT;
     END IF;
@@ -414,6 +417,13 @@ BEGIN
 
     UPDATE daily_templates SET visible = TRUE, activo = TRUE WHERE id = p_id;
 
+    -- Reactivar: restaurar las instancias que se ocultaron junto con la plantilla
+    UPDATE daily_tasks SET deleted_at = NULL
+    WHERE template_id = p_id AND deleted_at IS NOT NULL;
+
+    -- Y generar de inmediato la tarea fija en la bitácora de HOY
+    PERFORM fun_abrir_bitacora(CURRENT_DATE);
+
     RETURN jsonb_build_object('ok', TRUE, 'mensaje', 'Plantilla restaurada.');
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', FALSE, 'mensaje', SQLERRM);
@@ -434,12 +444,18 @@ BEGIN
         RETURN jsonb_build_object('ok', FALSE, 'mensaje', 'Plantilla no encontrada.');
     END IF;
 
-    -- Al reactivarla: restaurar sus instancias borradas suavemente y propagar sus datos
+    -- Al reactivarla: restaurar sus instancias borradas suavemente y propagar sus datos.
+    -- Al desactivarla: ocultar también sus tareas de la bitácora (hoy y días anteriores),
+    -- para que "desactivar" se refleje de inmediato en el dashboard.
     IF v_activo THEN
         UPDATE daily_tasks SET deleted_at = NULL
         WHERE template_id = p_id AND deleted_at IS NOT NULL;
 
         PERFORM fun_sincronizar_template(p_id);
+        PERFORM fun_abrir_bitacora(CURRENT_DATE);
+    ELSE
+        UPDATE daily_tasks SET deleted_at = NOW()
+        WHERE template_id = p_id AND deleted_at IS NULL;
     END IF;
 
     RETURN jsonb_build_object('ok', TRUE,
@@ -475,7 +491,6 @@ BEGIN
 
     -- Sincronizar SIEMPRE: las plantillas nuevas/activadas que aún no tengan
     -- instancia en este día se generan al instante (no solo al crear la bitácora).
-    -- Respeta borrados suaves: si la tarea del día fue eliminada, no se regenera.
     INSERT INTO daily_tasks (daily_log_id, template_id, tipo_id, descripcion, estado, prioridad)
     SELECT
         v_log_id,
@@ -493,6 +508,27 @@ BEGIN
             AND t2.template_id  = dt.id
       )
     ORDER BY dt.orden, dt.nombre;
+
+    -- Si la plantilla fue reactivada/restaurada y su instancia del día estaba
+    -- oculta por soft delete, se trae de vuelta a la bitácora.
+    UPDATE daily_tasks t
+    SET deleted_at = NULL
+    FROM daily_templates dt
+    WHERE t.template_id = dt.id
+      AND t.daily_log_id = v_log_id
+      AND t.deleted_at IS NOT NULL
+      AND dt.activo = TRUE
+      AND dt.visible = TRUE;
+
+    -- Mantener el texto/tipo sincronizado con la plantilla en las instancias vigentes
+    UPDATE daily_tasks t
+    SET descripcion = dt.nombre,
+        tipo_id     = dt.tipo_id
+    FROM daily_templates dt
+    WHERE t.template_id = dt.id
+      AND t.daily_log_id = v_log_id
+      AND t.deleted_at IS NULL
+      AND (t.descripcion IS DISTINCT FROM dt.nombre OR t.tipo_id IS DISTINCT FROM dt.tipo_id);
 
     RETURN jsonb_build_object(
         'ok',   TRUE,
