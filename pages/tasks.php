@@ -117,7 +117,8 @@ $nRes  = count(array_filter($tareas, fn($t) => $t['estado'] === 'resuelto'));
           <button data-act="estado" data-estado="en_gestion">En gestión</button>
           <button data-act="estado" data-estado="resuelto">Resuelto</button>
           <button data-act="detalle">Nota / historial</button>
-          <?php if ($t['_adhoc']): ?><button data-act="eliminar" class="danger">Eliminar</button><?php endif; ?>
+          <?php if ($t['_adhoc']): ?><button data-act="editar">Editar</button><?php endif; ?>
+          <button data-act="eliminar" class="danger">Eliminar</button>
         </div>
       </div>
     </div>
