@@ -15,6 +15,27 @@ $q      = trim($_GET['q'] ?? '');
 $orden  = $_GET['orden'] ?? 'creacion';             // creacion | prioridad | estado
 
 $lbl    = ['pendiente' => 'Pendiente', 'en_gestion' => 'En gestión', 'resuelto' => 'Resuelto'];
+
+// Etiqueta visible del tipo (misma que dashboard)
+if (!function_exists('tipo_badge')) {
+  function tipo_badge(?string $nombre, ?string $color): string {
+    if ($nombre === null || $nombre === '') return '';
+    $corto = mb_strtolower(trim(explode('/', $nombre)[0]));
+    $mapa = [
+      'guía pendiente de entrega' => 'Guía pendiente',
+      'guía sin planillar'        => 'Sin planillar',
+      'queja / reclamación'       => 'Queja',
+      'consulta de cliente'       => 'Consulta',
+      'seguimiento de novedad'    => 'Novedad',
+      'faltante'                  => 'Faltante',
+      'recuperación de cartaporte'=> 'Cartaporte',
+    ];
+    $txt = $mapa[$corto] ?? mb_substr($nombre, 0, 22);
+    // Color normalizado (por si la BD lo guarda con espacios o formato CHAR(7))
+    $hex = preg_match('/^#?([0-9a-fA-F]{6})$/', trim((string)$color), $m) ? '#' . $m[1] : '#7C3AED';
+    return '<span class="tag-tipo" style="--tc:' . $hex . '"><span class="dot"></span>' . e($txt) . '</span>';
+  }
+}
 $prioOr = ['alta' => 0, 'media' => 1, 'baja' => 2];
 $estOr  = ['pendiente' => 0, 'en_gestion' => 1, 'resuelto' => 2];
 
@@ -100,7 +121,7 @@ $nRes  = count(array_filter($tareas, fn($t) => $t['estado'] === 'resuelto'));
   <?php foreach ($tareas as $t): ?>
     <div class="task-row" data-id="<?= $t['id'] ?>" data-adhoc="<?= $t['_adhoc'] ? 1 : 0 ?>" data-desc="<?= e($t['descripcion']) ?>" data-nota="<?= e($t['notas'] ?? '') ?>" data-prio="<?= e($t['prioridad']) ?>" data-lim="<?= e($t['fecha_limite'] ?? '') ?>" data-tipo="<?= e($t['tipo_id'] ?? '') ?>" data-guia="<?= e($t['numero_guia'] ?? '') ?>">
       <div class="cb <?= $t['completado'] ? 'done' : '' ?>" data-act="toggle" role="checkbox" aria-checked="<?= $t['completado'] ? 'true' : 'false' ?>"></div>
-      <div class="type-dot" style="background:<?= e($t['tipo_color'] ?? '#999') ?>" title="<?= e($t['tipo_nombre'] ?? '') ?>"></div>
+      <?= tipo_badge($t['tipo_nombre'] ?? null, $t['tipo_color'] ?? null) ?>
       <?php if (!empty($t['numero_guia'])): ?><div class="task-guide"><?= e($t['numero_guia']) ?></div><?php endif; ?>
       <div class="task-desc <?= $t['completado'] ? 'done-text' : '' ?>" data-act="detalle">
         <?= e($t['descripcion']) ?>

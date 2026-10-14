@@ -48,6 +48,17 @@ a{text-decoration:none}
 .cb.done{background:var(--purple);border-color:var(--purple)}
 .cb.done::after{content:'';width:5px;height:8px;border:2px solid #fff;border-top:none;border-left:none;transform:rotate(40deg) translateY(-1px)}
 .type-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+/* Etiqueta de tipo (chip con nombre del tipo, color segun el tipo) */
+.tag-tipo{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;white-space:nowrap;line-height:1.4;color:var(--tc,#7C3AED);background:var(--tc-soft,rgba(124,58,237,.10));border:1px solid var(--tc-bd,rgba(124,58,237,.3))}
+@supports (background:color-mix(in srgb,red 12%,#fff)){
+  .tag-tipo{background:color-mix(in srgb,var(--tc) 12%,#fff);border-color:color-mix(in srgb,var(--tc) 25%,#fff)}
+}
+@media (prefers-color-scheme: dark){
+  @supports not (background:color-mix(in srgb,red 12%,#fff)){
+    .tag-tipo{background:rgba(255,255,255,.08)}
+  }
+}
+.tag-tipo .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:var(--tc,#7C3AED)}
 .task-guide{font-size:12px;font-weight:500;color:var(--muted);min-width:96px;font-family:ui-monospace,Menlo,Consolas,monospace}
 .task-desc{flex:1;cursor:pointer}
 .task-desc.done-text{color:var(--muted);text-decoration:line-through}
