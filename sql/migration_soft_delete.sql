@@ -33,6 +33,19 @@ ALTER TABLE daily_templates
 --        fun_guardar_nota / fun_buscar_archivo (filtran deleted_at IS NULL)
 --    Forma más simple: volver a ejecutar TODO taskup_schema.sql v1.2 con los
 --    CREATE OR REPLACE FUNCTION (los ALTER TABLE de arriba ya agregan columnas).
+--    ⚠ IMPORTANTE: ejecuta SIEMPRE este archivo ANTES de las funciones, o usa
+--    el script sql/upgrade_v1.2.sh que hace las dos cosas en orden.
+
+
+-- ============================================================
+-- 5. UPGRADE SEGURO (recomendado): agrega columnas + recarga
+--    todas las funciones desde taskup_schema.sql SIN borrar datos.
+--    Ejecutar desde la carpeta del proyecto:
+--      psql -U postgres -d taskup -f sql/migration_soft_delete.sql
+--      psql -U postgres -d taskup -f sql/taskup_schema.sql
+--    Si algún CREATE TABLE falla porque la tabla ya existe, es normal:
+--    el archivo continúa y las funciones quedan actualizadas.
+-- ============================================================
 
 -- 4. Verificación rápida
 -- SELECT id, descripcion, deleted_at FROM daily_tasks ORDER BY id DESC LIMIT 10;
