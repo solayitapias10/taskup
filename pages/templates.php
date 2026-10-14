@@ -1,7 +1,9 @@
 <?php
 // Tareas fijas — plantillas que se generan automáticamente cada día en la bitácora
-$templates = db_call('fun_listar_templates')['data'] ?? [];
-$tipos     = array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => $t['activo']);
+$todas      = db_call('fun_listar_templates_todas')['data'] ?? [];
+$templates  = array_values(array_filter($todas, fn($t) => $t['visible']));
+$eliminadas = array_values(array_filter($todas, fn($t) => !$t['visible']));
+$tipos     = array_values(array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => $t['activo'] && $t['visible']));
 ?>
 
 <div class="top-bar">
@@ -29,12 +31,28 @@ $tipos     = array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t)
         <div class="menu">
           <button data-act="editar_tpl">Editar</button>
           <button data-act="toggle_tpl"><?= $tpl['activo'] ? 'Desactivar' : 'Activar' ?></button>
+          <button data-act="eliminar_tpl" class="danger">Eliminar</button>
         </div>
       </div>
     </div>
   <?php endforeach; ?>
   <?php if (!$templates): ?><div class="empty">No hay plantillas. Crea la primera con el botón “Nueva plantilla”.</div><?php endif; ?>
 </div>
+
+<?php if ($eliminadas): ?>
+<div class="divider"></div>
+<div class="tasks-block">
+  <div class="section-title">Plantillas eliminadas <span class="badge"><?= count($eliminadas) ?></span></div>
+  <?php foreach ($eliminadas as $tpl): ?>
+    <div class="task-row cfg-row inactive" data-id="<?= (int)$tpl['id'] ?>">
+      <div class="type-dot" style="background:<?= e($tpl['tipo_color'] ?? '#999') ?>"></div>
+      <div class="task-desc"><?= e($tpl['nombre']) ?></div>
+      <div class="chip pendiente">Eliminada</div>
+      <button class="btn-ghost" data-act="restaurar_tpl">Restaurar</button>
+    </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
 
 <!-- Modal plantilla (crear/editar) -->
 <div class="modal-bg" id="mTpl" hidden>

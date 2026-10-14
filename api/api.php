@@ -57,10 +57,14 @@ switch ($act) {
             ['::int', '::varchar', '::varchar', '::varchar']); break;
     case 'toggle_tipo':
         $r = db_call('fun_toggle_task_type', [(int)$in['id']], ['::int']); break;
+    case 'eliminar_tipo':
+        $r = db_call('fun_eliminar_tipo', [(int)$in['id']], ['::int']); break;
 
     // ---- Plantillas (tareas fijas) ----
     case 'listar_templates':
         $r = db_call('fun_listar_templates'); break;
+    case 'listar_templates_todas':
+        $r = db_call('fun_listar_templates_todas'); break;
     case 'crear_template':
         $r = db_call('fun_insert_template',
             [$in['nombre'] ?? '', $nul('descripcion'), $int($nul('tipo_id')), (int)($in['orden'] ?? 0)],
@@ -71,6 +75,14 @@ switch ($act) {
             ['::int', '::varchar', '::text', '::int', '::smallint']); break;
     case 'toggle_template':
         $r = db_call('fun_toggle_template', [(int)$in['id']], ['::int']); break;
+    case 'eliminar_template':
+        $r = db_call('fun_eliminar_template',
+            [(int)$in['id'], !empty($in['eliminar_tareas'])],
+            ['::int', '::bool']); break;
+    case 'restaurar_template':
+        $r = db_call('fun_restaurar_template', [(int)$in['id']], ['::int']); break;
+    case 'sincronizar_template':
+        $r = db_call('fun_sincronizar_template', [(int)$in['id']], ['::int']); break;
 
     default:
         $r = ['ok' => false, 'mensaje' => 'Acción desconocida.'];

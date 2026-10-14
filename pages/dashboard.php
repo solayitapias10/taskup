@@ -12,7 +12,7 @@ $logId = $ab['data']['log_id'];
 // 2. Datos
 $stats = db_call('fun_stats_dia', [$hoy], ['::date'])['data'] ?? ['total'=>0,'pendientes'=>0,'resueltas'=>0,'vencidas'=>0];
 $dia   = db_call('fun_listar_tareas_dia', [$hoy], ['::date'])['data'] ?? ['fijas'=>[],'adhoc'=>[]];
-$tipos = array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => $t['activo']);
+$tipos = array_values(array_filter(db_call('fun_listar_task_types')['data'] ?? [], fn($t) => $t['activo'] && $t['visible']));
 
 $estadoLbl = ['pendiente' => 'Pendiente', 'en_gestion' => 'En gestión', 'resuelto' => 'Resuelto'];
 

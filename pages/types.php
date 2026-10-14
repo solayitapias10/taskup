@@ -1,6 +1,8 @@
 <?php
 // Tipos de tarea — catálogo con color e icono (CRUD vía funciones almacenadas)
-$tipos = db_call('fun_listar_task_types')['data'] ?? [];
+$todos  = db_call('fun_listar_task_types')['data'] ?? [];
+$tipos    = array_values(array_filter($todos, fn($t) => $t['visible']));
+$ocultos  = array_values(array_filter($todos, fn($t) => !$t['visible']));
 
 $iconos = ['ti-tag', 'ti-package', 'ti-clipboard-list', 'ti-alert-circle', 'ti-message-circle',
            'ti-search', 'ti-package-off', 'ti-file-check', 'ti-truck', 'ti-phone', 'ti-mail', 'ti-bell'];
@@ -28,12 +30,28 @@ $iconos = ['ti-tag', 'ti-package', 'ti-clipboard-list', 'ti-alert-circle', 'ti-m
         <div class="menu">
           <button data-act="editar_tipo">Editar</button>
           <button data-act="toggle_tipo"><?= $tp['activo'] ? 'Desactivar' : 'Activar' ?></button>
+          <button data-act="eliminar_tipo" class="danger">Eliminar</button>
         </div>
       </div>
     </div>
   <?php endforeach; ?>
   <?php if (!$tipos): ?><div class="empty">No hay tipos creados todavía.</div><?php endif; ?>
 </div>
+
+<?php if ($ocultos): ?>
+<div class="divider"></div>
+<div class="tasks-block">
+  <div class="section-title">Tipos eliminados <span class="badge"><?= count($ocultos) ?></span></div>
+  <?php foreach ($ocultos as $tp): ?>
+    <div class="task-row cfg-row inactive" data-id="<?= (int)$tp['id'] ?>">
+      <div class="type-dot big" style="background:<?= e($tp['color']) ?>"></div>
+      <div class="task-desc"><?= e($tp['nombre']) ?></div>
+      <div class="chip pendiente">Eliminado</div>
+      <button class="btn-ghost" data-act="restaurar_tipo">Restaurar</button>
+    </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
 
 <!-- Modal tipo (crear/editar) -->
 <div class="modal-bg" id="mTipo" hidden>
